@@ -15,6 +15,7 @@ import argparse
 import itertools
 import collections
 import codecs
+from pathlib import Path
 
 # local import
 import macros
@@ -408,7 +409,7 @@ class Token(Dnd5ApiObject):
 	@property
 	def spell_slots(self): #max slots available
 		spells={}
-		for i, (k,v) in enumerate(self.slots.iteritems()):
+		for i, (k,v) in enumerate(self.slots.items()):
 			spells["%s"%(i+1)] = v
 		return spells
 
@@ -456,7 +457,7 @@ class Token(Dnd5ApiObject):
 			('SpellSlots', self.spell_slots),
 			# do ('bstr', '{floor((getProperty("Strength")-10)/2)}') for all attributes
 			] + [('b%s' % a[:3].lower(), '{floor((getProperty("%s")-10)/2)}' % a) for a in self.attributes] +
-			[(k, v) for k,v in self.slots.iteritems()]
+			[(k, v) for k,v in self.slots.items()]
 			)
 
 	@property
@@ -481,7 +482,7 @@ class Token(Dnd5ApiObject):
 			zipme.writestr('properties.xml', self.properties_xml.encode('utf-8'))
 			# default image for the token, right now it's a brown bear
 			# zip the xml file named with the md5 containing the asset properties
-			for name, asset in self.assets.iteritems():
+			for name, asset in self.assets.items():
 				zipme.writestr('assets/%s' % asset.md5, jenv().get_template('md5.template').render(name=name, extension='png', md5=asset.md5).encode("utf-8"))
 				zipme.writestr('assets/%s.png' % asset.md5, asset.bytes)
 			# build thumbnails
@@ -563,7 +564,7 @@ class POI(LibToken):
 	@property
 	def macros(self):
 		if not self._macros:
-			for name,asset in self.assets.iteritems():
+			for name,asset in self.assets.items():
 				# add the name as comment so the macro are sorted by the name => increasing number
 				label = '<!--%s--><img height=40 width=40 src="asset://%s"></img>' % (name, asset.md5)
 				self._macros.append(macros.Macro(self, '', label, ''' [h: setTokenImage("asset://%s")] ''' % asset.md5, group='icons' if (not name.startswith('rn_')) else 'IDs', colors=('black', 'white')))
@@ -602,7 +603,7 @@ class POI(LibToken):
 	@property
 	def props(self):
 		return (Prop(name, value) for name, value in [
-			('images', json.dumps({name: asset.md5 for (name, asset) in self.assets.iteritems()}))
+			('images', json.dumps({name: asset.md5 for (name, asset) in self.assets.items()}))
 		])
 
 		#  and attr and dc and attack
@@ -715,10 +716,10 @@ def main():
 	if not os.path.exists('build'): os.makedirs('build')
 	localMonsters = []
 	tob = '../open5e/legacy-source-content/monsters/tome-of-beasts/'
-	sources = [
-		r'../5e-database/5e-SRD-Monsters-volo.json',
-		r'../5e-database/5e-SRD-Monsters.json',
-	]
+	
+    ##hijacking sources
+	sources = [str(x) for x in Path('../fc5_xml/').glob('*.json')]
+
 	sources += [os.path.join(dp, f) for dp, dn, filenames in os.walk(tob) for f in filenames if os.path.splitext(f)[1] == '.rst' and 'index' not in f]
 	for f in sources:
 		with codecs.open(f, 'r', encoding='utf8') as mfile:
@@ -857,15 +858,21 @@ def main():
 		</tr>
 	</table>
 </td>''' , **params))
-	filename = addon.zipme()
-	log.warning("Done generating 1 library token: %s", addon)
+	try:
+		filename = addon.zipme()
+		log.warning("Done generating 1 library token: %s", addon)
+	except:
+		log.warning("Errored generated 1 library token %s",addon)
+	
 
-
-	poi = POI("POI")
+	try:
+		poi = POI("POI")
+	except:
+		log.warning("I don't know what POI is or does.")
 	# fetch the monsters(token) and spells from dnd5Api or get them from the serialized file
 	#tokens = itertools.chain((Token(m) for m in monsters), Token.load('build'))
 	# dont use online api, use the fectched local database instead
-	tokens = itertools.chain([poi], (Token(m) for m in itertools.chain(localMonsters)))
+	tokens = itertools.chain((Token(m) for m in itertools.chain(localMonsters)))
 	# 5e-database is probably a link
 	with open(r'../5e-database/5e-SRD-Spells.json', 'r') as mfile:
 		localSpells = json.load(mfile)
@@ -877,12 +884,18 @@ def main():
 	deliveryFilename = 'build/dnd5eTokens.zip'
 	zfile = zipfile.ZipFile(deliveryFilename, "w", zipfile.ZIP_STORED) if args.delivery else None
 	# add lib:addon5e to the zipfile
-	if zfile:
-		zfile.write(filename, os.path.basename(filename))
+	#if zfile:
+	#	zfile.write(filename, os.path.basename(filename))
+    
 	for token in itertools.islice(tokens, args.max_token):
 		log.info(token)
-		log.debug(token.verbose())
-		filename = token.zipme()
+		#log.debug(token.verbose())
+		try:
+			filename = token.zipme()
+		except:
+			print(token.name)
+			continue
+			
 		if zfile:
 			zfile.write(filename, os.path.join("tokens", os.path.basename(filename)))
 		sTokens.append(token)

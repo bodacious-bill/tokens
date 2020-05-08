@@ -1,0 +1,6 @@
+
+*.rptok
+*.pyc
+*.cmpgn
+build/dnd5eTokens.zip
+build/tokens.log
